@@ -1,12 +1,11 @@
+# Depth Anything 3 - Minimal Requirements (xformers yok)
+
 torch>=2.0.0
 torchvision>=0.15.0
-pillow>=9.0.0
 numpy>=1.24.0
-opencv-python-headless>=4.8.0
-timm>=0.9.0
-transformers>=4.30.0
-huggingface_hub>=0.16.0
-einops>=0.7.0
+opencv-python-headless>=4.7.0
+pillow>=9.5.0
+huggingface-hub>=0.14.0
 
-# Depth Anything 3
+# Depth Anything 3 repository
 git+https://github.com/ByteDance-Seed/Depth-Anything-3.git
