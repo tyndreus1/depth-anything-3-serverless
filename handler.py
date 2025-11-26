@@ -1,72 +1,102 @@
 """
-Depth Anything 3 - RunPod Handler (Template Deployment)
-Bu dosyayı GitHub'a yükleyip RunPod'dan direkt kullanacağız - Docker build'e gerek yok!
+Depth Anything 3 - RunPod Serverless Handler (Self-Contained)
+Bu handler kendi başına çalışır - GitHub clone ve package install yapar
 """
 
+import os
+import sys
+import subprocess
+import time
+
+def setup_environment():
+    """Ortamı hazırla: Git clone + pip install"""
+    
+    print("=" * 60)
+    print("🚀 Depth Anything 3 Kurulum Başlıyor...")
+    print("=" * 60)
+    
+    # Workspace dizini
+    workspace = "/workspace"
+    repo_dir = os.path.join(workspace, "depth-anything-repo")
+    
+    # 1. Git clone (eğer yoksa)
+    if not os.path.exists(repo_dir):
+        print("📦 GitHub repository clone ediliyor...")
+        try:
+            subprocess.check_call([
+                "git", "clone",
+                "https://github.com/tyndreus1/depth-anything-3-serverless.git",
+                repo_dir
+            ])
+            print("✅ Clone tamamlandı!")
+        except subprocess.CalledProcessError as e:
+            print(f"❌ Git clone başarısız: {e}")
+            return False
+    else:
+        print("✅ Repository zaten mevcut")
+    
+    # 2. Requirements.txt'i kur
+    requirements_path = os.path.join(repo_dir, "requirements.txt")
+    if os.path.exists(requirements_path):
+        print("📦 Python paketleri kuruluyor...")
+        try:
+            subprocess.check_call([
+                sys.executable, "-m", "pip", "install",
+                "--no-cache-dir", "--ignore-installed",
+                "-r", requirements_path
+            ])
+            print("✅ Paketler kuruldu!")
+        except subprocess.CalledProcessError as e:
+            print(f"❌ Pip install başarısız: {e}")
+            return False
+    
+    # 3. RunPod SDK'yı kur
+    print("📦 RunPod SDK kuruluyor...")
+    try:
+        subprocess.check_call([
+            sys.executable, "-m", "pip", "install",
+            "--no-cache-dir", "--ignore-installed", "runpod"
+        ])
+        print("✅ RunPod SDK kuruldu!")
+    except subprocess.CalledProcessError as e:
+        print(f"❌ RunPod install başarısız: {e}")
+        return False
+    
+    print("=" * 60)
+    print("✅ Kurulum tamamlandı!")
+    print("=" * 60)
+    
+    return True
+
+# Kurulum yap
+if not setup_environment():
+    print("❌ Kurulum başarısız, çıkılıyor...")
+    sys.exit(1)
+
+# Şimdi gerçek handler'ı import et ve çalıştır
 import runpod
 import torch
 import base64
 import io
-import time
 from PIL import Image
 import numpy as np
-
-# Model import
-try:
-    from depth_anything_3.api import DepthAnything3
-    DEPTH_ANYTHING_AVAILABLE = True
-except ImportError:
-    print("⚠️ Depth Anything 3 henüz yüklenmedi, ilk çalıştırmada yüklenecek...")
-    DEPTH_ANYTHING_AVAILABLE = False
+from depth_anything_3.api import DepthAnything3
 
 # Global değişkenler
 MODEL = None
 DEVICE = None
 
-def install_dependencies():
-    """Gerekli paketleri yükle"""
-    import subprocess
-    import sys
-    
-    print("📦 Bağımlılıklar yükleniyor...")
-    
-    packages = [
-        "torch>=2.0.0",
-        "torchvision>=0.15.0",
-        "pillow>=9.0.0",
-        "numpy>=1.24.0",
-        "opencv-python-headless>=4.8.0",
-        "timm>=0.9.0",
-        "transformers>=4.30.0",
-        "huggingface_hub>=0.16.0",
-        "einops>=0.7.0",
-        "git+https://github.com/ByteDance-Seed/Depth-Anything-3.git"
-    ]
-    
-    for package in packages:
-        try:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", package])
-            print(f"✓ {package.split('>=')[0]} yüklendi")
-        except:
-            print(f"✗ {package} yüklenemedi, devam ediliyor...")
-
 def load_model():
     """Model'i yükle"""
-    global MODEL, DEVICE, DEPTH_ANYTHING_AVAILABLE
+    global MODEL, DEVICE
     
     if MODEL is None:
         print("🚀 Model yükleniyor...")
         start_time = time.time()
         
-        # Eğer depth_anything_3 yüklü değilse, önce yükle
-        if not DEPTH_ANYTHING_AVAILABLE:
-            install_dependencies()
-            from depth_anything_3.api import DepthAnything3
-        
         DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(f"📍 Device: {DEVICE}")
         
-        # Model'i indir ve yükle
         MODEL = DepthAnything3.from_pretrained("depth-anything/DA3-LARGE")
         MODEL = MODEL.to(device=DEVICE)
         MODEL.eval()
@@ -133,7 +163,7 @@ def process_depth(job):
         traceback.print_exc()
         return {"error": str(e), "success": False}
 
-# RunPod başlangıç
+# RunPod başlat
 if __name__ == "__main__":
     print("🎯 Depth Anything 3 Serverless başlatılıyor...")
     runpod.serverless.start({"handler": process_depth})
