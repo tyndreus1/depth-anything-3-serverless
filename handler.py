@@ -1,6 +1,6 @@
 """
-Depth Anything 3 - RunPod Serverless Handler (Self-Contained)
-Bu handler kendi başına çalışır - GitHub clone ve package install yapar
+Depth Anything 3 - RunPod Serverless Handler (FINAL VERSION)
+Manuel paket kurulumu - xformers sorunu yok
 """
 
 import os
@@ -9,78 +9,121 @@ import subprocess
 import time
 
 def setup_environment():
-    """Ortamı hazırla: Git clone + pip install"""
+    """Ortamı hazırla - Manuel paket kurulumu"""
     
     print("=" * 60)
-    print("🚀 Depth Anything 3 Kurulum Başlıyor...")
+    print("🚀 Depth Anything 3 Kurulum Başlıyor (Manuel)")
     print("=" * 60)
     
-    # Workspace dizini
-    workspace = "/workspace"
-    repo_dir = os.path.join(workspace, "depth-anything-repo")
-    
-    # 1. Git clone (eğer yoksa)
-    if not os.path.exists(repo_dir):
-        print("📦 GitHub repository clone ediliyor...")
-        try:
-            subprocess.check_call([
-                "git", "clone",
-                "https://github.com/tyndreus1/depth-anything-3-serverless.git",
-                repo_dir
-            ])
-            print("✅ Clone tamamlandı!")
-        except subprocess.CalledProcessError as e:
-            print(f"❌ Git clone başarısız: {e}")
-            return False
-    else:
-        print("✅ Repository zaten mevcut")
-    
-    # 2. Requirements.txt'i kur
-    requirements_path = os.path.join(repo_dir, "requirements.txt")
-    if os.path.exists(requirements_path):
-        print("📦 Python paketleri kuruluyor...")
-        try:
-            subprocess.check_call([
-                sys.executable, "-m", "pip", "install",
-                "--no-cache-dir", "--ignore-installed",
-                "-r", requirements_path
-            ])
-            print("✅ Paketler kuruldu!")
-        except subprocess.CalledProcessError as e:
-            print(f"❌ Pip install başarısız: {e}")
-            return False
-    
-    # 3. RunPod SDK'yı kur
-    print("📦 RunPod SDK kuruluyor...")
     try:
+        # 1. RunPod SDK
+        print("📦 RunPod SDK kuruluyor...")
+        subprocess.check_call([
+            sys.executable, "-m", "pip", "install", 
+            "--no-cache-dir", "--quiet", "runpod"
+        ])
+        print("✅ RunPod SDK kuruldu")
+        
+        # 2. Temel paketler (zaten base image'da var ama güncelleyelim)
+        print("📦 Temel paketler kontrol ediliyor...")
+        subprocess.check_call([
+            sys.executable, "-m", "pip", "install", 
+            "--no-cache-dir", "--quiet",
+            "torch>=2.0.0",
+            "torchvision>=0.15.0", 
+            "numpy>=1.24.0",
+            "pillow>=9.5.0"
+        ])
+        print("✅ Temel paketler hazır")
+        
+        # 3. OpenCV (headless - GUI yok)
+        print("📦 OpenCV kuruluyor...")
         subprocess.check_call([
             sys.executable, "-m", "pip", "install",
-            "--no-cache-dir", "--ignore-installed", "runpod"
+            "--no-cache-dir", "--quiet", 
+            "opencv-python-headless>=4.7.0"
         ])
-        print("✅ RunPod SDK kuruldu!")
-    except subprocess.CalledProcessError as e:
-        print(f"❌ RunPod install başarısız: {e}")
+        print("✅ OpenCV kuruldu")
+        
+        # 4. Hugging Face Hub
+        print("📦 Hugging Face Hub kuruluyor...")
+        subprocess.check_call([
+            sys.executable, "-m", "pip", "install",
+            "--no-cache-dir", "--quiet",
+            "huggingface-hub>=0.14.0"
+        ])
+        print("✅ Hugging Face Hub kuruldu")
+        
+        # 5. Depth-Anything-3 (xformers OLMADAN!)
+        print("📦 Depth Anything 3 kuruluyor (xformers atlanıyor)...")
+        
+        # Git clone
+        workspace = "/workspace"
+        da3_dir = os.path.join(workspace, "Depth-Anything-3")
+        
+        if not os.path.exists(da3_dir):
+            subprocess.check_call([
+                "git", "clone", 
+                "https://github.com/ByteDance-Seed/Depth-Anything-3.git",
+                da3_dir
+            ])
+        
+        # Setup.py'yi xformers olmadan çalıştır
+        os.chdir(da3_dir)
+        
+        # Önce setup.py'deki xformers dependency'sini kaldır
+        setup_py_path = os.path.join(da3_dir, "setup.py")
+        if os.path.exists(setup_py_path):
+            with open(setup_py_path, 'r') as f:
+                setup_content = f.read()
+            
+            # xformers satırını kaldır
+            setup_content = setup_content.replace(
+                'git+https://github.com/facebookresearch/xformers.git@main#egg=xformers',
+                ''
+            )
+            
+            with open(setup_py_path, 'w') as f:
+                f.write(setup_content)
+        
+        # Şimdi kur
+        subprocess.check_call([
+            sys.executable, "-m", "pip", "install",
+            "--no-cache-dir", "-e", "."
+        ])
+        
+        print("✅ Depth Anything 3 kuruldu")
+        
+        print("=" * 60)
+        print("✅ KURULUM TAMAMLANDI!")
+        print("=" * 60)
+        return True
+        
+    except Exception as e:
+        print(f"❌ Kurulum hatası: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return False
-    
-    print("=" * 60)
-    print("✅ Kurulum tamamlandı!")
-    print("=" * 60)
-    
-    return True
 
 # Kurulum yap
 if not setup_environment():
     print("❌ Kurulum başarısız, çıkılıyor...")
     sys.exit(1)
 
-# Şimdi gerçek handler'ı import et ve çalıştır
+# Şimdi handler'ı çalıştır
 import runpod
 import torch
 import base64
 import io
 from PIL import Image
 import numpy as np
-from depth_anything_3.api import DepthAnything3
+
+# Depth Anything 3'ü import et
+try:
+    from depth_anything_3.api import DepthAnything3
+except ImportError:
+    print("❌ Depth Anything 3 import edilemedi!")
+    sys.exit(1)
 
 # Global değişkenler
 MODEL = None
@@ -122,7 +165,7 @@ def process_depth(job):
         job_input = job["input"]
         
         if "image" not in job_input:
-            return {"error": "❌ 'image' parametresi gerekli (base64 string)"}
+            return {"error": "❌ 'image' parametresi gerekli (base64 string)", "success": False}
         
         print(f"📥 İşlem başlıyor - Job ID: {job['id']}")
         start_time = time.time()
